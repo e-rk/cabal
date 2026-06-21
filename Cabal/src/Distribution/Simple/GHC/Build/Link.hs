@@ -53,7 +53,6 @@ import System.Directory
   )
 import System.FilePath
   ( isRelative
-  , replaceExtension
   )
 
 -- | Links together the object files of the Haskell modules and extra sources
@@ -109,11 +108,18 @@ linkOrLoadComponent
     cleanedExtraLibDirsStatic <- liftIO $ filterM (doesDirectoryExist . i) (extraLibDirsStatic bi)
 
     let
-      extraSourcesObjs :: [RelativePath Artifacts File]
+      extraSourcesObjs :: [SymbolicPath Pkg File]
       extraSourcesObjs =
-        [ makeRelativePathEx $ getSymbolicPath src `replaceExtension` objExtension
+        [ src `replaceExtensionSymbolicPath` objExtension
         | src <- extraSources
         ]
+
+      extraSourcesObjsFromRelativeOrAbsolute :: SymbolicPath Pkg File -> SymbolicPath Pkg File
+      extraSourcesObjsFromRelativeOrAbsolute obj =
+        case symbolicPathRelative_maybe obj of
+          -- NB: The absolute path should point somewhere under build directory.
+          Nothing -> obj
+          Just relObj -> coerceSymbolicPath buildTargetDir </> relObj
 
       -- TODO: Shouldn't we use withStaticLib for libraries and something else
       -- for foreign libs in the three cases where we use `withFullyStaticExe` below?
@@ -141,10 +147,7 @@ linkOrLoadComponent
           , ghcOptLinkFrameworks = toNubListR $ map getSymbolicPath $ PD.frameworks bi
           , ghcOptLinkFrameworkDirs = toNubListR $ PD.extraFrameworkDirs bi
           , ghcOptInputFiles =
-              toNubListR
-                [ coerceSymbolicPath $ buildTargetDir </> obj
-                | obj <- extraSourcesObjs
-                ]
+              toNubListR (map extraSourcesObjsFromRelativeOrAbsolute extraSourcesObjs)
           , ghcOptNoLink = Flag False
           , ghcOptRPaths = rpaths
           }
