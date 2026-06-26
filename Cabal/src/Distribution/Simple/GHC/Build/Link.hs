@@ -27,7 +27,8 @@ import Distribution.Simple.Compiler
 import Distribution.Simple.Errors
 import Distribution.Simple.GHC.Build.Modules
 import Distribution.Simple.GHC.Build.Utils
-  ( exeTargetName
+  ( areFilesInsideDir
+  , exeTargetName
   , flibBuildName
   , flibTargetName
   , objectFilePath
@@ -149,6 +150,10 @@ linkOrLoadComponent
           , ghcOptNoLink = Flag False
           , ghcOptRPaths = rpaths
           }
+
+    objsOutsideArtifactDir <- areFilesInsideDir mbWorkDir buildTargetDir extraSourcesObjs
+    forM_ objsOutsideArtifactDir $ \file -> do
+      warn verbosity $ show file <> ": artifact is outside build directory"
 
     case what of
       BuildRepl replFlags -> liftIO $ do

@@ -25,8 +25,12 @@ import Distribution.Types.LocalBuildInfo
   )
 import Distribution.Utils.Path
 import Distribution.Verbosity
+import System.Directory
+  ( canonicalizePath
+  )
 import System.FilePath
-  ( takeExtension
+  ( splitDirectories
+  , takeExtension
   )
 
 -- | Find the path to the entry point of an executable (typically specified in
@@ -274,3 +278,23 @@ decodeMainIsArg arg
       where
         -- 'safeTail' drops the char satisfying 'pred'
         (r_suf, r_pre) = break pred' (reverse str)
+
+isFileInsideDir
+  :: Maybe (SymbolicPath CWD (Dir from))
+  -> SymbolicPath from (Dir to)
+  -> SymbolicPath from File
+  -> IO Bool
+isFileInsideDir mbWorkDir directory path = do
+  let interpretedDir = interpretSymbolicPath mbWorkDir directory
+      interpretedFile = interpretSymbolicPath mbWorkDir path
+  dirCanonical <- canonicalizePath interpretedDir
+  fileCanonical <- canonicalizePath interpretedFile
+  pure (splitDirectories dirCanonical `isPrefixOf` splitDirectories fileCanonical)
+
+areFilesInsideDir
+  :: Maybe (SymbolicPath CWD (Dir from))
+  -> SymbolicPath from (Dir to)
+  -> [SymbolicPath from File]
+  -> IO [SymbolicPath from File]
+areFilesInsideDir mbWorkDir directory files =
+  filterM (\x -> not <$> isFileInsideDir mbWorkDir directory x) files
