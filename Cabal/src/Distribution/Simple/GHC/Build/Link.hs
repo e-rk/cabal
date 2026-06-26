@@ -26,7 +26,13 @@ import Distribution.Simple.BuildPaths
 import Distribution.Simple.Compiler
 import Distribution.Simple.Errors
 import Distribution.Simple.GHC.Build.Modules
-import Distribution.Simple.GHC.Build.Utils (exeTargetName, flibBuildName, flibTargetName, withDynFLib)
+import Distribution.Simple.GHC.Build.Utils
+  ( exeTargetName
+  , flibBuildName
+  , flibTargetName
+  , objectFilePath
+  , withDynFLib
+  )
 import Distribution.Simple.GHC.ImplInfo
 import qualified Distribution.Simple.GHC.Internal as Internal
 import Distribution.Simple.LocalBuildInfo
@@ -110,16 +116,9 @@ linkOrLoadComponent
     let
       extraSourcesObjs :: [SymbolicPath Pkg File]
       extraSourcesObjs =
-        [ src `replaceExtensionSymbolicPath` objExtension
+        [ objectFilePath buildTargetDir objExtension src
         | src <- extraSources
         ]
-
-      extraSourcesObjsFromRelativeOrAbsolute :: SymbolicPath Pkg File -> SymbolicPath Pkg File
-      extraSourcesObjsFromRelativeOrAbsolute obj =
-        case symbolicPathRelative_maybe obj of
-          -- NB: The absolute path should point somewhere under build directory.
-          Nothing -> obj
-          Just relObj -> coerceSymbolicPath buildTargetDir </> relObj
 
       -- TODO: Shouldn't we use withStaticLib for libraries and something else
       -- for foreign libs in the three cases where we use `withFullyStaticExe` below?
@@ -146,8 +145,7 @@ linkOrLoadComponent
                   else cleanedExtraLibDirs
           , ghcOptLinkFrameworks = toNubListR $ map getSymbolicPath $ PD.frameworks bi
           , ghcOptLinkFrameworkDirs = toNubListR $ PD.extraFrameworkDirs bi
-          , ghcOptInputFiles =
-              toNubListR (map extraSourcesObjsFromRelativeOrAbsolute extraSourcesObjs)
+          , ghcOptInputFiles = toNubListR extraSourcesObjs
           , ghcOptNoLink = Flag False
           , ghcOptRPaths = rpaths
           }
@@ -297,21 +295,8 @@ linkLibrary buildTargetDir cleanedExtraLibDirs verbosity runGhcProg lib lbi clbi
             buildTargetDir
             hs_ext
             True
-        , pure $ map (srcObjPath obj_ext) extraSources
+        , pure $ map (objectFilePath buildTargetDir obj_ext) extraSources
         ]
-
-    -- Get the @.o@ path from a source path (e.g. @.hs@),
-    -- in the library target build directory.
-    srcObjPath :: String -> SymbolicPath Pkg File -> SymbolicPath Pkg File
-    srcObjPath obj_ext srcPath =
-      case symbolicPathRelative_maybe objPath of
-        -- Absolute path: should already be in the target build directory
-        -- (e.g. a preprocessed file)
-        -- TODO: assert this?
-        Nothing -> objPath
-        Just objRelPath -> coerceSymbolicPath buildTargetDir </> objRelPath
-      where
-        objPath = srcPath `replaceExtensionSymbolicPath` obj_ext
 
     -- I'm fairly certain that, just like the executable, we can keep just the
     -- module input list, and point to the right sources dir (as is already
