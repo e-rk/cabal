@@ -140,7 +140,10 @@ import qualified Data.Set as Set
 
 import System.Directory (doesFileExist, getModificationTime)
 import qualified System.FilePath as FilePath
+import qualified Debug.Trace as D (trace)
 
+tdebug :: c -> String -> c
+tdebug = flip D.trace
 --------------------------------------------------------------------------------
 -- SetupHooks
 
@@ -891,9 +894,15 @@ executeRulesUserOrSystem scope runDepsCmdData runCmdData verbosity lbi tgtInfo a
       \rId (Rule{ruleCommands = cmds}) ->
         runDepsCmdData rId (ruleDepsCmd cmds)
 
+  absWorkDir <- absoluteWorkingDirLBI lbi
+
   -- Create a build graph of all the rules, with static and dynamic dependencies
   -- as edges.
   let
+    --
+    relativeToAutogen :: SymbolicPath Pkg to -> Maybe (RelativePath Source to)
+    relativeToAutogen = relativePathRootedMaybe absWorkDir compAutogenDir
+
     (ruleGraph, ruleFromVertex, vertexFromRuleId) =
       Graph.graphFromEdges
         [ (rule, rId, ordNub $ mapMaybe directRuleDependencyMaybe allDeps)
@@ -955,12 +964,12 @@ executeRulesUserOrSystem scope runDepsCmdData runCmdData verbosity lbi tgtInfo a
       -> Either (NotDemandedRuleReasons scope) Graph.Vertex
     isLeafRule (rId, r@Rule{results = ruleOutputLocs})
       | let
-          normOuts = fmap normaliseLocation ruleOutputLocs
+          normOuts = fmap (normaliseLocation absWorkDir) ruleOutputLocs
           anyOut f =
             any
               ( \demandedPath ->
-                  let normDemanded = normaliseLocation $ Location compAutogenDir demandedPath
-                   in any (f normDemanded) normOuts
+                  let normDemanded = normaliseLocation absWorkDir $ Location compAutogenDir demandedPath
+                   in any (f normDemanded) normOuts `tdebug` (show normDemanded <> " Dem " <> show normOuts)
               )
       , -- Autogen modules
         anyOut (==) autogenModPaths
@@ -1066,9 +1075,6 @@ executeRulesUserOrSystem scope runDepsCmdData runCmdData verbosity lbi tgtInfo a
       dieWithException verbosity $
         SetupHooksException $
           RulesException e
-
-    relativeToAutogen :: SymbolicPath Pkg to -> Maybe (RelativePath Source to)
-    relativeToAutogen = relativePathMaybe compAutogenDir
 
 -- | Collects why certain rules were not demanded (and thus not run), in order
 -- to construct an error message to report to the user.
@@ -1217,9 +1223,13 @@ resolveDependency verbosity rId allRules = \case
                     RulesException $
                       InvalidRuleOutputIndex rId depId os i
 
-normaliseLocation :: Location -> Location
-normaliseLocation (Location base rel) =
-  Location (normaliseSymbolicPath base) (normaliseSymbolicPath rel)
+normaliseLocation :: AbsolutePath (Dir Pkg) -> Location -> Location
+normaliseLocation (AbsolutePath root) (Location base rel) =
+  Location (absBase) (normaliseSymbolicPath rel)
+  where
+    absBase = case symbolicPathRelative_maybe base of
+      Just relBase -> root </> relBase
+      Nothing -> base
 
 dropExtensionLocation :: Location -> Location
 dropExtensionLocation (Location base rel) =

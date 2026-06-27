@@ -22,5 +22,6 @@ Warning: Running MyPp3
 Warning: "<ROOT>/cabal.dist/work/./inner/dist/build/<ARCH>/ghc-<GHCVER>/setup-hooks-non-hs-rules-test-0.1.0.0/build/NonHs/autogen"
 Warning: Running MyPp1
 Warning: Running MyPp2
+Warning: Running AbsMyPp5
 Preprocessing executable 'NonHs' for setup-hooks-non-hs-rules-test-0.1.0.0...
 Building executable 'NonHs' for setup-hooks-non-hs-rules-test-0.1.0.0...

@@ -32,6 +32,10 @@ import System.FilePath
   ( splitDirectories
   , takeExtension
   )
+import qualified Debug.Trace as D (trace)
+
+tdebug :: c -> String -> c
+tdebug = flip D.trace
 
 -- | Find the path to the entry point of an executable (typically specified in
 -- @main-is@, and found in @hs-source-dirs@ -- yes, even when @main-is@ is not a Haskell file).
@@ -289,7 +293,7 @@ isFileInsideDir mbWorkDir directory path = do
       interpretedFile = interpretSymbolicPath mbWorkDir path
   dirCanonical <- canonicalizePath interpretedDir
   fileCanonical <- canonicalizePath interpretedFile
-  pure (splitDirectories dirCanonical `isPrefixOf` splitDirectories fileCanonical)
+  pure (splitDirectories dirCanonical `isPrefixOf` splitDirectories fileCanonical) `tdebug` (show dirCanonical <> " prefix of " <> show fileCanonical)
 
 areFilesInsideDir
   :: Maybe (SymbolicPath CWD (Dir from))

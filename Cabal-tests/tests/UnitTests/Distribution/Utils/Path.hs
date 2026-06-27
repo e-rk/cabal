@@ -17,21 +17,22 @@ tests =
   [ testCase "relativePathMaybe: direct child" $
       relativePathMaybe
         (makeSymbolicPath $ "a" </> "b")
-        (makeSymbolicPath $ "a" </> "b" </> "c")
+        (makeRelativePathEx $ "a" </> "b" </> "c")
         @?= Just (makeRelativePathEx "c")
   , testCase "relativePathMaybe: deeper nesting" $
       relativePathMaybe
         (makeSymbolicPath "a")
-        (makeSymbolicPath $ "a" </> "b" </> "c")
+        (makeRelativePathEx $ "a" </> "b" </> "c")
         @?= Just (makeRelativePathEx $ "b" </> "c")
   , testCase "relativePathMaybe: unrelated path" $
       relativePathMaybe
         (makeSymbolicPath $ "a" </> "b")
-        (makeSymbolicPath $ "x" </> "y")
+        (makeRelativePathEx $ "x" </> "y")
         @?= Nothing
   , testCase "relativePathMaybe: partial prefix is not a match" $
       relativePathMaybe
         (makeSymbolicPath $ "a" </> "bc")
-        (makeSymbolicPath $ "a" </> "bcd" </> "e")
+        (makeRelativePathEx $ "a" </> "bcd" </> "e")
         @?= Nothing
+  -- , testCase "relativePathRootedMaybe: "
   ]

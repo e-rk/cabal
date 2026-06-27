@@ -30,6 +30,9 @@ import qualified Data.List.NonEmpty as NE
 import Data.String
 import Data.Traversable ( for )
 import GHC.Generics
+import Distribution.Simple.LocalBuildInfo
+  ( absoluteWorkingDirLBI )
+import Control.Monad.IO.Class ( liftIO )
 
 import qualified Data.Map as Map
 
@@ -46,7 +49,9 @@ setupHooks =
     }
 
 pcc :: PreConfComponentHook
-pcc (PreConfComponentInputs _lbc pbd _comp) =
+pcc (PreConfComponentInputs _lbc pbd _comp) = do
+  absWorkDir <- absoluteWorkingDir Nothing
+  let absAutogenDir = unsafeMakeSymbolicPath $ interpretSymbolicPathAbsolute absWorkDir autogenDir
   return $
     PreConfComponentOutputs $ ComponentDiff $ CExe $
       emptyExecutable
@@ -65,7 +70,8 @@ pcc (PreConfComponentInputs _lbc pbd _comp) =
             --    recompilation checking.
             emptyBuildInfo
               { cSources = [ autogenDir </> unsafeMakeSymbolicPath "Gen.c"
-                           , autogenDir </> unsafeMakeSymbolicPath "Gen2.c"]
+                           , autogenDir </> unsafeMakeSymbolicPath "Gen2.c"
+                           , absAutogenDir </> unsafeMakeSymbolicPath "AbsGenNoDep.c"]
               }
         }
   where
@@ -73,9 +79,11 @@ pcc (PreConfComponentInputs _lbc pbd _comp) =
 
 preBuildRules :: PreBuildComponentInputs -> RulesM ()
 preBuildRules (PreBuildComponentInputs { buildingWhat = what, localBuildInfo = lbi, targetInfo = tgt }) = mdo
+  absWorkDir <- liftIO $ absoluteWorkingDirLBI lbi
   let verbosityFlags = buildingWhatVerbosity what
       clbi = targetCLBI tgt
       autogenDir = autogenComponentModulesDir lbi clbi
+      absAutogenDir = unsafeMakeSymbolicPath $ interpretSymbolicPathAbsolute absWorkDir autogenDir
       buildDir = componentBuildDir lbi clbi
 
       runPpAction1 (PpInput {..}) = do
@@ -86,6 +94,7 @@ preBuildRules (PreBuildComponentInputs { buildingWhat = what, localBuildInfo = l
           , "int gen_quux(int);"
           , "int gen_nozzle(int);"
           , "int norbert(int);"
+          , "int gen_nomo(int);"
           ]
         rewriteFileEx verbosity (getSymbolicPath genDir </> "Gen.c") $ unlines
           [ "#include \"A_stub.h\""
@@ -131,6 +140,15 @@ preBuildRules (PreBuildComponentInputs { buildingWhat = what, localBuildInfo = l
         warn verbosity "Running MyPp4"
         rewriteFileEx verbosity (getSymbolicPath genDir </> "GenLib.a") ""
 
+      -- Check that this rule with absolute cSources path is demanded via
+      -- the cSources demand. No other rule demands it.
+      runPpAction5 (PpInput {..}) = do
+        let verbosity = mkVerbosity defaultVerbosityHandles verbosityFlags
+        warn verbosity "Running AbsMyPp5"
+        rewriteFileEx verbosity (getSymbolicPath genDir </> "AbsGenNoDep.c") $ unlines
+          [ "int abs_needed(int x) { return (x+ 989001); };"
+          ]
+
       mkRule1 =
         staticRule
           (mkCommand (static Dict) (static runPpAction1) $ PpInput {genDir = autogenDir, ..})
@@ -157,10 +175,17 @@ preBuildRules (PreBuildComponentInputs { buildingWhat = what, localBuildInfo = l
           [ ]
           ( Location autogenDir (unsafeMakeSymbolicPath "GenLib.a") NE.:| [] )
 
+      mkRule5 =
+        staticRule
+          (mkCommand (static Dict) (static runPpAction5) $ PpInput {genDir = absAutogenDir, ..})
+          [ ]
+          ( Location absAutogenDir (unsafeMakeSymbolicPath "AbsGenNoDep.c") NE.:| [] )
+
   r1 <- registerRule "MyPP1" mkRule1
   void $ registerRule "MyPP2" (mkRule2 r1)
   void $ registerRule "MyPP3" mkRule3
   void $ registerRule "MyPP4" mkRule4
+  void $ registerRule "AbsMyPP5" mkRule5
 
 -- | Input to preprocessor command
 data PpInput

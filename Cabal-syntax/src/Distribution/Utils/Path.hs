@@ -60,6 +60,8 @@ module Distribution.Utils.Path
   , replaceExtensionSymbolicPath
   , normaliseSymbolicPath
   , relativePathMaybe
+  , relativePathRootedMaybe
+  , stripAbsoluteSymbolicPath
 
     -- ** Working directory handling
   , interpretSymbolicPathCWD
@@ -97,6 +99,10 @@ import Data.List
 import GHC.Stack
   ( HasCallStack
   )
+import qualified Debug.Trace as D (trace)
+
+debug :: c -> String -> c
+debug = flip D.trace
 
 -------------------------------------------------------------------------------
 
@@ -344,7 +350,7 @@ coerceSymbolicPath = coerce
 
 -- | Does the second argument point to a sub-directory of the first one?
 -- If so, return the relative portion of the path, relative to the first argument.
-relativePathMaybe :: SymbolicPath from (Dir dir) -> SymbolicPath from to -> Maybe (RelativePath dir to)
+relativePathMaybe :: SymbolicPath from (Dir dir) -> RelativePath from to -> Maybe (RelativePath dir to)
 relativePathMaybe base fp =
   let dirPieces =
         FilePath.splitDirectories $
@@ -356,7 +362,44 @@ relativePathMaybe base fp =
           FilePath.normalise $
             getSymbolicPath fp
    in unsafeMakeSymbolicPath . FilePath.joinPath
-        <$> stripPrefix dirPieces pathPieces
+        <$> stripPrefix dirPieces pathPieces `debug` (show dirPieces ++ " || " ++ show pathPieces)
+
+stripAbsoluteSymbolicPath :: AbsolutePath (Dir from) -> SymbolicPath from to -> Maybe (RelativePath from to)
+stripAbsoluteSymbolicPath (AbsolutePath root) fp =
+  let absRootPieces =
+        FilePath.splitDirectories $
+          FilePath.dropTrailingPathSeparator $
+            FilePath.normalise $
+              getSymbolicPath root
+      pathPieces =
+        FilePath.splitDirectories $
+          FilePath.normalise $
+            getSymbolicPath fp
+   in unsafeMakeSymbolicPath . FilePath.joinPath
+          <$> stripPrefix absRootPieces pathPieces
+
+relativePathRootedMaybe
+  :: AbsolutePath (Dir from)
+  -> SymbolicPath from (Dir dir)
+  -> SymbolicPath from to
+  -> Maybe (RelativePath dir to)
+relativePathRootedMaybe (AbsolutePath root) base fp =
+  let absBase =
+        FilePath.splitDirectories $
+          FilePath.dropTrailingPathSeparator $
+            FilePath.normalise $
+              getSymbolicPath $
+                case symbolicPathRelative_maybe base of
+                  Just relBase -> root </> relBase
+                  Nothing -> base
+      absFp =
+        FilePath.splitDirectories $
+          FilePath.normalise $
+            getSymbolicPath $
+              case symbolicPathRelative_maybe fp of
+                Just relFp -> root </> relFp
+                Nothing -> fp
+   in unsafeMakeSymbolicPath . FilePath.joinPath <$> stripPrefix absBase absFp
 
 -- | Change both what a symbolic path is pointing from and pointing to.
 --
